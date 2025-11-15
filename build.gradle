@@ -39,6 +39,8 @@ dependencies {
 
 	//Serializer -Deserializer
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.7'
+
+
 }
 
 dependencyManagement {
