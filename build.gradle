@@ -40,6 +40,12 @@ dependencies {
 	//Serializer -Deserializer
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.7'
 
+	//Necesario para los endpoints de Actuator
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    //El Bus! Permite que RabbitMQ envíe el evento de refresco a todos
+    implementation 'org.springframework.cloud:spring-cloud-starter-bus-amqp'
+
 
 }
 
