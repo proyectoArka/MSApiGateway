@@ -17,14 +17,15 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import com.Arka.MSApiGateway.exception.ExpiredTokenException;
+import com.Arka.MSApiGateway.exception.InvalidTokenException;
 
 @Component
 public class JwtUtil {
 
     private final SecretKey signingKey;
 
-    public JwtUtil(@Value("${jwt.secret-key}") String secretKey,
-                   @Value("${jwt.expiration}") long expirationTime) {
+    public JwtUtil(@Value("${jwt.secret-key}") String secretKey) {
 
         this.signingKey = Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
     }
@@ -40,9 +41,12 @@ public class JwtUtil {
                     .parseSignedClaims(token);
             return true;
         } catch (ExpiredJwtException e) {
-            return false;
+            throw new ExpiredTokenException("Token expirado", e);
         } catch (SignatureException | MalformedJwtException | UnsupportedJwtException | IllegalArgumentException e) {
-            return false;
+            throw new InvalidTokenException("Token inválido", e);
+        } catch (io.jsonwebtoken.JwtException e) {
+            // Cubre otras excepciones de jjwt (incluye WeakKeyException, DecodingException, etc.)
+            throw new InvalidTokenException("Error al parsear token JWT", e);
         }
     }
 
@@ -50,12 +54,13 @@ public class JwtUtil {
      * Obtiene el email del usuario desde el token JWT.
      */
     public String getEmailFromToken(String token) {
-        return Jwts.parser()
+        Claims claims = Jwts.parser()
                 .verifyWith(signingKey)
                 .build()
                 .parseSignedClaims(token)
-                .getPayload()
-                .getSubject(); // El Subject es el email del usuario en tu implementación
+                .getPayload();
+
+        return claims.getSubject(); // El Subject es el email del usuario en tu implementación
     }
 
     /**
@@ -101,7 +106,7 @@ public class JwtUtil {
         return null;
     }
 }
-    /*
+/*
 1. Usuario envía request con header:
 Authorization: Bearer eyJhbGc...
 

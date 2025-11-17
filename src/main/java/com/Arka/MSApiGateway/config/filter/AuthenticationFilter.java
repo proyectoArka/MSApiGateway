@@ -13,6 +13,10 @@ import reactor.core.publisher.Mono;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.stream.Collectors;
+import com.Arka.MSApiGateway.exception.ExpiredTokenException;
+import com.Arka.MSApiGateway.exception.InvalidTokenException;
+import com.Arka.MSApiGateway.dto.ErrorDto;
+import com.Arka.MSApiGateway.exception.MissingJwtException;
 
 @Component
 public class AuthenticationFilter implements GlobalFilter, Ordered {
@@ -46,19 +50,30 @@ public class AuthenticationFilter implements GlobalFilter, Ordered {
 
         // Verificar si el encabezado de autorización está presente y tiene el formato correcto
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return this.onError(exchange, "JWT no presente o formato incorrecto", HttpStatus.UNAUTHORIZED);
+            // Lanzamos excepción que contiene el mensaje — así el mensaje se guarda en la excepción y no en la lógica del filtro
+            try {
+                throw new MissingJwtException();
+            } catch (MissingJwtException ex) {
+                return this.onError(exchange, ex.getMessage(), HttpStatus.UNAUTHORIZED);
+            }
         }
 
         // Extraer el token JWT del encabezado
         String jwt = authHeader.substring(7);
 
-        // Validar el token JWT
-        if (!jwtUtil.validateToken(jwt)) {
-            return this.onError(exchange, "JWT inválido o expirado", HttpStatus.UNAUTHORIZED);
-        }
+        try {
+            // Validar el token JWT (lanza excepción si inválido/expirado)
+            jwtUtil.validateToken(jwt);
 
-        // Modificar la solicitud para agregar los encabezados personalizados
-        return chain.filter(this.mutateRequest(exchange, jwt));
+            // Modificar la solicitud para agregar los encabezados personalizados
+            return chain.filter(this.mutateRequest(exchange, jwt));
+        } catch (ExpiredTokenException e) {
+            return this.onError(exchange, e.getMessage(), HttpStatus.UNAUTHORIZED);
+        } catch (InvalidTokenException e) {
+            return this.onError(exchange, e.getMessage(), HttpStatus.UNAUTHORIZED);
+        } catch (MissingJwtException e) {
+            return this.onError(exchange, e.getMessage(), HttpStatus.UNAUTHORIZED);
+        }
     }
 
     // Establecer el orden del filtro
@@ -94,10 +109,13 @@ public class AuthenticationFilter implements GlobalFilter, Ordered {
     private Mono<Void> onError(ServerWebExchange exchange, String err, HttpStatus httpStatus) {
         exchange.getResponse().setStatusCode(httpStatus);
         exchange.getResponse().getHeaders().add("Content-Type", "application/json");
+        // Construir ErrorDto JSON usando el status y el mensaje de la excepción
+        ErrorDto dto = new ErrorDto(httpStatus.value(), err);
+        // Escapar comillas en el mensaje para no romper el JSON
+        String safeMessage = dto.getError() == null ? "" : dto.getError().replace("\"", "\\\"");
+        String json = String.format("{\"status\":%d,\"error\":\"%s\"}", dto.getStatus(), safeMessage);
         return exchange.getResponse().writeWith(Mono.just(exchange.getResponse()
-                .bufferFactory().wrap(
-                        ("{\"error\":\"" + err + "\"}").getBytes(StandardCharsets.UTF_8)
-                )));
+                .bufferFactory().wrap(json.getBytes(StandardCharsets.UTF_8))));
     }
 }
     /*
